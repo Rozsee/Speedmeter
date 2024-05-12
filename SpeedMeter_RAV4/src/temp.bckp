@@ -1,0 +1,264 @@
+#include <Arduino.h>
+#include <SPI.h>
+#include <Adafruit_MCP2515.h>
+#include <Wire.h>
+
+#define LED PC13
+#define CLK_1 PA5
+#define MOSI_1 PA7
+#define CS_CAN_GW PA4
+#define CAN_BAUDRATE (500000)
+
+Adafruit_MCP2515 mcp2515(CS_CAN_GW);                                     // Creates MCP2515 object instance
+
+unsigned long startMillis = 0;
+unsigned long currentMillis = 0;
+const unsigned long pollPeriod = 250;
+unsigned int TimerTick = 0;
+
+// put function declarations here:
+void initPINs()
+{
+  pinMode(LED, OUTPUT);
+  delay(100);  
+}
+
+void initSerial()
+ {
+  Serial.begin(9600, SERIAL_8N1);   
+  delay(100);
+ }
+
+void initSPI()
+{
+  SPI.begin();
+  SPI.setBitOrder(LSBFIRST);
+  SPI.setDataMode(SPI_MODE0);
+  SPI.setClockDivider(SPI_CLOCK_DIV16);
+}
+
+void OBD2_request()
+{
+  /*Variable declatarions*/
+  int CANID = 0x7DF;                        // General broadcast request (since I do not know which ECU will respond, I send it to everybody)
+  char mode = 0x01;
+  char dVehSpeed = 0x0D;                    // PID ID 0x0D = vehicle speed (1 byte lenght)
+  char dMotRPM = 0x0C;                      // PID ID 0x0C = engine speed (2 byte lenght)
+  
+  /*INIT MCP2515 peripherial*/
+  if (!mcp2515.begin(CAN_BAUDRATE))         // Init MCP2515 
+  {
+    Serial.println("Init MCP2515 FAIL...");
+  }
+  else
+  {
+    Serial.println("Init MCP2515 OK...");
+  }
+
+  delay(10);
+
+  /*Send frame*/
+  mcp2515.beginPacket(CANID);  // Start Frame
+  mcp2515.write(0x02);         // numbers of following bytes (DLC)
+  mcp2515.write(mode);
+  mcp2515.write(dVehSpeed);    // data to request (PID)
+  mcp2515.write(0xCC);         // padding...
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.endPacket();        // End Frame
+
+  //mcp2515.end();
+
+  /*Do diagnostic stuff and return True to restart timer*/
+    digitalWrite(LED, !digitalRead(LED));
+  //Serial.println("OBD request sent...");  
+}
+
+void UDS_ReqDiagSession()
+{
+  if (!mcp2515.begin(CAN_BAUDRATE))         // Init MCP2515 
+  {
+    Serial.println("Init MCP2515 FAIL...");
+  }
+  else
+  {
+    Serial.println("Init MCP2515 OK...");
+    //mcp2515.onReceive(INT_PIN, onReceive);
+  }
+
+  /*Send frame*/
+  mcp2515.beginPacket(0x7E0);   // Start Frame (0x7DF)
+  mcp2515.write(0x02);          // PCI lenght
+  mcp2515.write(0x10);          // SID: Request diagnostic session (0x10)
+  mcp2515.write(0x01);          // SUB-FUNCTION: Default session (0x01)
+  mcp2515.write(0xCC);          // padding...
+  mcp2515.write(0xCC);          
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.endPacket();          // End Frame
+
+  Serial.println("Diagnostic session request sent...");
+}
+
+void UDS_TesterPresent()
+{
+  if (!mcp2515.begin(CAN_BAUDRATE))         // Init MCP2515 
+  {
+    Serial.println("Init MCP2515 FAIL...");
+  }
+  else
+  {
+    Serial.println("Init MCP2515 OK...");
+  }
+
+  /*Send frame*/
+  mcp2515.beginPacket(0x7DF);   // Start Frame
+  mcp2515.write(0x02);          // PCI lenght (2 byte)
+  mcp2515.write(0x3E);          // SID: Tester present (0x3E)
+  mcp2515.write(0x01);          // SUPPRESS POSITIVE RESPONSE 
+  mcp2515.write(0xCC);          // padding...
+  mcp2515.write(0xCC);          
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.endPacket();          // End Frame
+
+  Serial.println("Tester Present...");
+
+}
+
+void UDS_requestData()
+{
+ /*Variable declatarions*/
+  int CANID = 0x7DF;                        // General broadcast request (since I do not know which ECU will respond, I send it to everybody)
+  char PCI = 0x03;                          // PCI field_ 1st 4 bit = frame type (0x0 for Single Frame), 2nd 4 bit = lenght of request (0x3 or 3 byte sent)
+  char SID = 0x22;                          // SID = Service Identifier: 22 = Read Data by identifier
+  char DID_1 = 0xF4;                        // DID = Data identifier: Vehicle speed = 0xF4D. This is the 1st byte
+  char DID_2 = 0x0D;                        // DID = Data identifier: Vehicle speed = 0xF40D. This is the 2nd byte
+  
+  /*INIT MCP2515 peripherial*/
+  if (!mcp2515.begin(CAN_BAUDRATE))         // Init MCP2515 
+  {
+    Serial.println("Init MCP2515 FAIL...");
+  }
+  else
+  {
+    Serial.println("Init MCP2515 OK...");
+  }
+
+  /*Send frame*/
+  mcp2515.beginPacket(0x7DF);   // Start Frame
+  mcp2515.write(0x03);    // byte 1
+  mcp2515.write(0x22);    // byte 2
+  mcp2515.write(0xF4);    // byte 3     // data to request (PID)
+  mcp2515.write(0x0D);    // byte 4
+  mcp2515.write(0xCC);    // byte 5      // padding...
+  mcp2515.write(0xCC);    // byte 6
+  mcp2515.write(0xCC);    // byte 7
+  mcp2515.write(0xCC);    // byte 8
+  mcp2515.endPacket();    // End Frame
+
+  digitalWrite(LED, !digitalRead(LED));
+
+}
+
+void UDS_response()
+{
+  char old_val;
+  char val;
+
+  int packetSize = mcp2515.parsePacket();
+
+  if (packetSize)
+  {
+    //Serial.println("Packet received");
+    if (mcp2515.packetRtr())
+    {
+      Serial.println("RTR packet received... -> SKIP");   // RTR request (remote transmission requests) are ignored
+    }
+
+    Serial.print("packet with id 0x");
+    Serial.print(mcp2515.packetId(), HEX);
+    Serial.print(" and length ");
+    Serial.println(packetSize);
+    
+    while (mcp2515.available()) 
+    {
+      Serial.print("Data = ");
+      //Serial.println((char)mcp2515.read());
+      Serial.println((int)mcp2515.read());
+      /*
+      val = mcp2515.read();
+      Serial.print(val, HEX);
+      */
+    }
+  }
+  else
+  {
+   // Serial.println("No packet received...");
+  }
+} 
+
+void WaitForResp()
+{
+  unsigned int attemptCounter = 0;
+  while (attemptCounter < 100)
+    {
+      UDS_response();
+      attemptCounter = attemptCounter +1;
+    }
+  Serial.println("Listening for response finished...");
+}
+
+void setup() 
+{
+  /*put your setup code here, to run once:*/
+  // Init Pheripherials
+    initPINs();
+    initSPI();
+    initSerial();
+    Serial.println("Pheripherial init finished...");
+    Serial.println("Requesting Diag session...");
+    
+  // UDS_ReqDiagSession();
+  // WaitForResp();
+
+    
+  
+ //initSPI();  // Call it after every SPI-CAn gateway call...
+  
+}
+
+void loop() 
+{
+  UDS_response();
+
+  // put your main code here, to run repeatedly:
+  //PutChar(0x31, 0);
+
+  /*
+  currentMillis = millis();
+  if (currentMillis - startMillis >= pollPeriod)
+  {
+    UDS_requestData();
+    startMillis = currentMillis;
+    TimerTick = TimerTick + 1;
+    if (TimerTick == 8)
+    {
+      UDS_TesterPresent();
+      TimerTick = 0;
+    }
+  }
+  else
+  {
+    UDS_response();
+  }
+*/
+
+  //initSPI();
+  //PutChar(0x31, 0);
+  //Serial.println("looping...");
+}

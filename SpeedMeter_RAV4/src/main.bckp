@@ -1,0 +1,419 @@
+#include <Arduino.h>
+#include <SPI.h>
+#include <Adafruit_MCP2515.h>
+#include <Wire.h>
+
+#define LED PC13
+#define CLK_1 PA5
+#define MOSI_1 PA7
+#define CS_CAN_GW PA4
+#define CS_VFD PB1
+#define CAN_BAUDRATE (500000)
+
+Adafruit_MCP2515 mcp2515(CS_CAN_GW);                                     // Creates MCP2515 object instance
+
+const char Text[] = "km/h";
+unsigned long startMillis = 0;
+unsigned long currentMillis = 0;
+const unsigned long pollPeriod = 250;
+unsigned int TimerTick = 0;
+
+// put function declarations here:
+void initPINs()
+{
+  pinMode(LED, OUTPUT);
+  pinMode(CS_VFD, OUTPUT);
+
+  digitalWrite(CS_VFD, HIGH);
+
+  delay(1000);  
+}
+
+void initSPI()
+{
+  SPI.begin();
+  SPI.setBitOrder(LSBFIRST);
+  SPI.setDataMode(SPI_MODE0);
+  SPI.setClockDivider(SPI_CLOCK_DIV16);
+}
+
+void initVFD()
+{
+  digitalWrite(CS_CAN_GW, HIGH);
+  digitalWrite(CS_VFD, LOW);            // Select slave (display)
+  SPI.transfer(0xE0);                   // disp timing: (universal) 1st:0xE0  2nd:0x07
+  SPI.transfer(0x7F);
+  digitalWrite(CS_VFD, HIGH);
+
+  digitalWrite(CS_CAN_GW, HIGH);
+  digitalWrite(CS_VFD, LOW);
+  SPI.transfer(0xE4);                   // Brightness value: 1st:0xE4  2nd 0xFF
+  SPI.transfer(0X7F);
+  digitalWrite(CS_VFD, HIGH);
+
+  digitalWrite(CS_CAN_GW, HIGH);
+  digitalWrite(CS_VFD, LOW);
+  SPI.transfer(0xEC);                   // stdby off, set to running mode
+  digitalWrite(CS_VFD, HIGH);
+
+  digitalWrite(CS_CAN_GW, HIGH);
+  digitalWrite(CS_VFD, LOW);
+  SPI.transfer(0xE8);                   // Disp. light to normal operation, 1st: 0xE8
+  digitalWrite(CS_VFD, HIGH);
+}
+
+void ClearScr()
+{
+  digitalWrite(CS_CAN_GW, HIGH);
+  digitalWrite(CS_VFD, LOW);
+  for (int i=0; i<8; i++)
+  {
+    SPI.transfer(0x20);                   // Start position
+    SPI.transfer(0x20);                   // 'space'
+  }
+  digitalWrite(CS_VFD, HIGH);
+}
+
+void PutChar(char symbol, int position)
+{
+  /*
+  Puts a single character to the requested position of the display
+  position = could be number from 0 to 7
+  symbol = 8 bit lenght charater code (MSB first LSB last)
+  */
+  digitalWrite(CS_CAN_GW, HIGH);
+  digitalWrite(CS_VFD, LOW);
+  SPI.transfer(0x20 + position);          // Start position
+  SPI.transfer(symbol);                   // 'FULL SEGMENT'
+  digitalWrite(CS_VFD, HIGH);
+}
+
+void PutStr(const char text[], int position)
+/*
+Puts a string to the requested position of the display
+text = string to display
+position = could be number from 0 to 7
+*/
+{
+  digitalWrite(CS_CAN_GW, HIGH);
+  digitalWrite(CS_VFD, LOW);
+  SPI.transfer(0x20 + position);                   // Start position
+  for (int i=0; i < strlen(text); i++)
+  {
+    SPI.transfer(text[i]);
+  }
+  digitalWrite(CS_VFD, HIGH);
+}
+
+void StartScreen(int mode)
+{
+  if (mode == 1)
+  {
+    for (int i=0; i<8; i++)
+    PutChar(0x15, i);       // Full segment
+    delay(3000);
+
+    ClearScr();
+    for (int i=0; i<8; i++)
+      PutChar(0x16, i);       // 1 -> 0x16
+    delay(100);
+
+    ClearScr();  
+    for (int i=0; i<8; i++)
+      PutChar(0x17, i);       // 2 -> 0x17
+    delay(100);
+
+    ClearScr();
+    for (int i=0; i<8; i++)
+      PutChar(0x18, i);       // 3 -> 0x18
+    delay(100);
+
+    ClearScr();
+    for (int i=0; i<8; i++)
+      PutChar(0x19, i);       // 4 -> 0x19
+    delay(100);
+
+    ClearScr();
+    for (int i=0; i<8; i++)
+      PutChar(0x1A, i);       // 5 -> 0x1A
+    delay(100);
+
+    ClearScr();
+    for (int i=0; i<8; i++)
+      PutChar(0x1B, i);       // 6 -> 1B
+    delay(100);
+
+    ClearScr();
+    for (int i=0; i<8; i++)
+      PutChar(0xFF, i);       // 7-> empty segment
+    delay(100);
+  }
+  else if (mode == 2)
+  {
+    for (int i=0; i<8; i++)
+      PutChar(0x1D, i);       // 1 -> 0x16
+    delay(75);
+    ClearScr();
+
+    for (int i=0; i<8; i++)
+      PutChar(0x1E, i);
+    delay(75);
+  }
+  else if (mode == 3)
+  {
+    for (int i=0; i<8; i++)
+      PutChar(0x2D, i);       // 1 -> 0x16
+    delay(100);
+    ClearScr();
+
+    for (int i=0; i<8; i++)
+      PutChar(0x5C, i);
+    delay(100);
+
+    for (int i=0; i<8; i++)
+      PutChar(0x2F, i);       // 1 -> 0x16
+    delay(100);
+    ClearScr();
+  }
+}
+
+void PrepareScreen()
+{
+  PutStr(Text, 4);
+}
+
+void OBD2_request()
+{
+  /*Variable declatarions*/
+  int CANID = 0x7DF;                        // General broadcast request (since I do not know which ECU will respond, I send it to everybody)
+  char mode = 0x01;
+  char dVehSpeed = 0x0D;                    // PID ID 0x0D = vehicle speed (1 byte lenght)
+  char dMotRPM = 0x0C;                      // PID ID 0x0C = engine speed (2 byte lenght)
+  
+  /*INIT MCP2515 peripherial*/
+  digitalWrite(CS_VFD, HIGH);               // Inhibit VFD pheripherial on SPI bus
+  if (!mcp2515.begin(CAN_BAUDRATE))         // Init MCP2515 
+  {
+    Serial.println("Init MCP2515 FAIL...");
+  }
+  else
+  {
+    Serial.println("Init MCP2515 OK...");
+  }
+
+  delay(10);
+
+  /*Send frame*/
+  mcp2515.beginPacket(CANID);  // Start Frame
+  mcp2515.write(0x02);         // numbers of following bytes (DLC)
+  mcp2515.write(mode);
+  mcp2515.write(dVehSpeed);    // data to request (PID)
+  mcp2515.write(0xCC);         // padding...
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.endPacket();        // End Frame
+
+  //mcp2515.end();
+
+  /*Do diagnostic stuff and return True to restart timer*/
+    digitalWrite(LED, !digitalRead(LED));
+  //Serial.println("OBD request sent...");  
+}
+
+void UDS_ReqDiagSession()
+{
+  digitalWrite(CS_VFD, HIGH);               // Inhibit VFD pheripherial on SPI bus
+  if (!mcp2515.begin(CAN_BAUDRATE))         // Init MCP2515 
+  {
+    Serial.println("Init MCP2515 FAIL...");
+  }
+  else
+  {
+    Serial.println("Init MCP2515 OK...");
+    //mcp2515.onReceive(INT_PIN, onReceive);
+  }
+
+  /*Send frame*/
+  mcp2515.beginPacket(0x7DF);   // Start Frame
+  mcp2515.write(0x02);          // PCI lenght
+  mcp2515.write(0x10);          // SID: Request diagnostic session (0x10)
+  mcp2515.write(0x01);          // SUB-FUNCTION: Default session (0x01)
+  mcp2515.write(0xCC);          // padding...
+  mcp2515.write(0xCC);          
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.endPacket();          // End Frame
+
+  Serial.println("Diagnostic session request sent");
+}
+
+void UDS_TesterPresent()
+{
+  digitalWrite(CS_VFD, HIGH);               // Inhibit VFD pheripherial on SPI bus
+  if (!mcp2515.begin(CAN_BAUDRATE))         // Init MCP2515 
+  {
+    Serial.println("Init MCP2515 FAIL...");
+  }
+  else
+  {
+    Serial.println("Init MCP2515 OK...");
+  }
+
+  /*Send frame*/
+  mcp2515.beginPacket(0x7DF);   // Start Frame
+  mcp2515.write(0x02);          // PCI lenght (2 byte)
+  mcp2515.write(0x3E);          // SID: Tester present (0x3E)
+  mcp2515.write(0x01);          // SUPPRESS POSITIVE RESPONSE 
+  mcp2515.write(0xCC);          // padding...
+  mcp2515.write(0xCC);          
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.write(0xCC);
+  mcp2515.endPacket();          // End Frame
+
+  Serial.println("Tester Present...");
+
+}
+
+void UDS_requestData()
+{
+ /*Variable declatarions*/
+  int CANID = 0x7DF;                        // General broadcast request (since I do not know which ECU will respond, I send it to everybody)
+  char PCI = 0x03;                          // PCI field_ 1st 4 bit = frame type (0x0 for Single Frame), 2nd 4 bit = lenght of request (0x3 or 3 byte sent)
+  char SID = 0x22;                          // SID = Service Identifier: 22 = Read Data by identifier
+  char DID_1 = 0xF4;                        // DID = Data identifier: Vehicle speed = 0xF4D. This is the 1st byte
+  char DID_2 = 0x0D;                        // DID = Data identifier: Vehicle speed = 0xF40D. This is the 2nd byte
+  
+  /*INIT MCP2515 peripherial*/
+  digitalWrite(CS_VFD, HIGH);               // Inhibit VFD pheripherial on SPI bus
+  if (!mcp2515.begin(CAN_BAUDRATE))         // Init MCP2515 
+  {
+    Serial.println("Init MCP2515 FAIL...");
+  }
+  else
+  {
+    Serial.println("Init MCP2515 OK...");
+  }
+
+  /*Send frame*/
+  mcp2515.beginPacket(0x7DF);   // Start Frame
+  mcp2515.write(0x03);    // byte 1
+  mcp2515.write(0x22);    // byte 2
+  mcp2515.write(0xF4);    // byte 3     // data to request (PID)
+  mcp2515.write(0x0D);    // byte 4
+  mcp2515.write(0xCC);    // byte 5      // padding...
+  mcp2515.write(0xCC);    // byte 6
+  mcp2515.write(0xCC);    // byte 7
+  mcp2515.write(0xCC);    // byte 8
+  mcp2515.endPacket();        // End Frame
+
+  digitalWrite(LED, !digitalRead(LED));
+
+}
+
+void OBD2_response()
+{
+  char old_val;
+  char val;
+
+  int packetSize = mcp2515.parsePacket();
+
+  if (packetSize)
+  {
+    //Serial.println("Packet received");
+    if (mcp2515.packetRtr())
+    {
+      Serial.println("RTR packet received... -> SKIP");   // RTR request (remote transmission requests) are ignored
+    }
+
+    Serial.print("packet with id 0x");
+    Serial.print(mcp2515.packetId(), HEX);
+    Serial.print(" and length ");
+    Serial.println(packetSize);
+    
+    while (mcp2515.available()) 
+    {
+      Serial.print("Data = ");
+      //Serial.println((char)mcp2515.read());
+      Serial.println((int)mcp2515.read());
+      /*
+      val = mcp2515.read();
+      Serial.print(val, HEX);
+      */
+    }
+  }
+  else
+  {
+    Serial.println("No packet received...");
+  }
+} 
+
+void TimerSetup()
+{
+  // TIMER definition
+  #if defined(TIM1)
+    TIM_TypeDef *Instance = TIM1;
+  #else
+    TIM_TypeDef *Instance = TIM2;
+  #endif
+ 
+  HardwareTimer *MyTim = new HardwareTimer(Instance);
+
+  MyTim->setOverflow(500000, MICROSEC_FORMAT);  // 0,5s
+  MyTim->attachInterrupt(OBD2_request);       // OBD2_request function is called
+  MyTim->resume();
+}
+
+void setup() 
+{
+  /*put your setup code here, to run once:*/
+  // Init serial port for writing to the console
+  Serial.begin(9600, SERIAL_8N1);   
+
+  delay(1000);
+
+  // Init Pheripherials
+  initPINs();
+  initSPI();
+  initVFD();
+  ClearScr();
+  StartScreen(1);
+  PrepareScreen();
+
+  UDS_ReqDiagSession();
+  //TimerSetup();
+
+  Serial.println("Pheripherial init finished...");
+  
+ //initSPI();  // Call it after every SPI-CAn gateway call...
+  
+}
+
+void loop() 
+{
+  // put your main code here, to run repeatedly:
+  //PutChar(0x31, 0);
+  currentMillis = millis();
+  if (currentMillis - startMillis >= pollPeriod)
+  {
+    UDS_requestData();
+    startMillis = currentMillis;
+    TimerTick = TimerTick + 1;
+    if (TimerTick == 8)
+    {
+      UDS_TesterPresent();
+      TimerTick = 0;
+    }
+  }
+  else
+  {
+    OBD2_response();
+  }
+
+  //initSPI();
+  //PutChar(0x31, 0);
+  //Serial.println("looping...");
+}

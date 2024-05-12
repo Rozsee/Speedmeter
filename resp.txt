@@ -1,0 +1,46 @@
+Pheripherial init finished...
+Requesting Diagnostic session...
+20 3 0 0 7
+23 7 1 F2 2 C 0 0 2B
+20 3 0 0 7
+23 7 1 F2 2 C 0 0 2B
+20 3 0 0 7
+25 8 F 95 F 97 78 78 78 DF
+22 8 1 F9 1 F8 0 0 0 1D
+20 3 0 0 7
+23 7 1 F2 2 C 0 0 2B
+23 7 1 F2 2 C 0 0 2B
+20 3 0 0 7
+23 7 1 F2 2 C 0 0 2B
+25 8 F 95 F 97 78 78 78 DF
+20 3 0 0 7
+23 7 1 F2 2 C 0 0 2B
+25 8 F 95 F 97 78 78 78 DF
+20 3 0 0 7
+23 7 1 F2 2 C 0 0 2B
+25 8 F 95 F 97 79 79 79 E2
+20 3 0 0 7
+Listening for response finished...
+Requesting UDS data...
+23 7 1 F2 2 C 0 0 2B
+23 7 1 F2 2 C 0 0 2B
+20 3 0 0 7
+25 8 F 95 F 97 78 78 78 DF
+20 3 0 0 7
+No packet received...
+25 8 F 95 F 97 79 79 79 E2
+23 7 1 F2 2 C 0 0 2B
+20 3 0 0 7
+25 8 F 95 F 97 78 78 78 DF
+22 8 1 F9 1 F7 0 0 0 1C
+22 8 1 F9 1 F7 0 0 0 1C
+23 7 1 F2 2 C 0 0 2B
+23 7 1 F2 2 C 0 0 2B
+20 3 0 0 7
+23 7 1 F2 2 C 0 0 2B
+25 8 F 95 F 97 78 78 78 DF
+20 3 0 0 7
+23 7 1 F2 2 C 0 0 2B
+25 8 F 95 F 97 78 78 78 DF
+Listening for response finished...
+
