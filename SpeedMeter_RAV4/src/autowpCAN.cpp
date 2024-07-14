@@ -45,25 +45,23 @@ void OBD2_request()
   char dVehSpeed = 0x0D;                    // PID ID 0x0D = vehicle speed (1 byte lenght)
   char dMotRPM = 0x0C;                      // PID ID 0x0C = engine speed (2 byte lenght)
   
-  delay(10);
+struct can_frame rqstOBDIIdata;
+Serial.println("Requesting OBD2 data...");
 
-  /*Send frame*/
-//  mcp2515.beginPacket(CANID);  // Start Frame
-//  mcp2515.write(0x02);         // numbers of following bytes (DLC)
-//  mcp2515.write(mode);
-//  mcp2515.write(dVehSpeed);    // data to request (PID)
-//  mcp2515.write(0xCC);         // padding...
-//  mcp2515.write(0xCC);
-//  mcp2515.write(0xCC);
-//  mcp2515.write(0xCC);
-//  mcp2515.write(0xCC);
-//  mcp2515.endPacket();        // End Frame
+/*Send frame*/
+rqstOBDIIdata.can_id = 0x7DF;          // CAN FRAME, CAN ID
+rqstOBDIIdata.can_dlc = 0x08;          // CAN FRAME, 8 bytes will be transmitted
+rqstOBDIIdata.data[0] = 0x02;          // OBD2 FRAME, 2 byte will be transferred
+rqstOBDIIdata.data[1] = 0x21;          // OBD2 FRAME, Service request Show data
+rqstOBDIIdata.data[2] = 0x0D;          // OBD2 FRAME, PID (speed)
+rqstOBDIIdata.data[3] = 0x00;          // OBD2 FRAME, unused -> 0 
+rqstOBDIIdata.data[4] = 0x00;          // 5.
+rqstOBDIIdata.data[5] = 0x00;          // 6.
+rqstOBDIIdata.data[6] = 0X00;          // 7.
+rqstOBDIIdata.data[7] = 0x17;          // 8. checksum = (7DF+8+2+21+0D)&FF = 17
 
-  //mcp2515.end();
-
-  /*Do diagnostic stuff and return True to restart timer*/
-    digitalWrite(LED, !digitalRead(LED));
-  //Serial.println("OBD request sent...");  
+mcp2515.sendMessage(&rqstOBDIIdata);
+digitalWrite(LED, !digitalRead(LED));
 }
 
 void UDS_ReqDiagSession()
@@ -74,15 +72,18 @@ void UDS_ReqDiagSession()
   Serial.println("Requesting Diagnostic session...");
 
   /*Send frame*/
-  rqstDiagSession.can_id = 0x7DF;
-  rqstDiagSession.can_dlc = 0x02;          // 0. DLC: 2 bytes will be transferred
-  rqstDiagSession.data[0] = 0x10;          // 1. SID: Request diagnostic session (0x10)
-  rqstDiagSession.data[1] = 0x01;          // 2. SUB-FUNCTION: Default session (0x01)
-  rqstDiagSession.data[2] = 0xCC;          // 3. padding...
-  rqstDiagSession.data[3] = 0xCC;          // 4. 
-  rqstDiagSession.data[4] = 0xCC;          // 5.
-  rqstDiagSession.data[5] = 0xCC;          // 6.
-  rqstDiagSession.data[6] = 0XCC;          // 7.
+  rqstDiagSession.can_id = 0x7DF;          // DEFAULT CAN FRAME, CAN ID
+  rqstDiagSession.can_dlc = 0x08;          // DEFAULT CAN FRAME, 8 bytes will be sent
+  rqstDiagSession.data[0] = 0x02;          // 0. UDS FRMAE, 2 bytes will be transferred
+  rqstDiagSession.data[1] = 0x10;          // 1. UDS FRMAE, SID: Request diagnostic session (0x10)
+  rqstDiagSession.data[2] = 0x01;          // 2. UDS FRAME, SUB-FUNCTION: Default session (0x01)
+  rqstDiagSession.data[3] = 0x00;          // 3. UDS FRAME, Not used -> 0 (padding...)
+  rqstDiagSession.data[4] = 0x00;          // 4. 
+  rqstDiagSession.data[5] = 0x00;          // 5.
+  rqstDiagSession.data[6] = 0x00;          // 6.
+  rqstDiagSession.data[7] = 0XFA;          // 7. checksum = (7DF+8+2+10+1)&FF = FA
+
+  mcp2515.sendMessage(&rqstDiagSession);
 
   /*
   mcp2515.beginPacket(0x7E0);   // Start Frame (0x7DF)
@@ -111,15 +112,18 @@ void UDS_TesterPresent()
   Serial.println("Sending TESTER PRESENT");
 
   /*Send frame*/
-  TstrPresent.can_id = 0x7DF;             // Start Frame
-  TstrPresent.can_dlc = 0x02;             // 0. PCI lenght (2 byte)
-  TstrPresent.data[0] = 0x3E;             // 1. SID: Tester present (0x3E)
-  TstrPresent.data[1] = 0x80;             // 2. SUPPRESS POSITIVE RESPONSE 
-  TstrPresent.data[2] = 0xCC;             // 3. padding...
-  TstrPresent.data[3] = 0xCC;             // 4.
-  TstrPresent.data[4] = 0xCC;             // 5. 
-  TstrPresent.data[5] = 0xCC;             // 6.
-  TstrPresent.data[6] = 0xCC;             // 7.
+  TstrPresent.can_id = 0x7DF;             // DEAFULT CAN FRAME, CAN ID
+  TstrPresent.can_dlc = 0x08;             // DEFAULT CAN FRAME, 8 bytes will be sent
+  TstrPresent.data[0] = 0x02;             // USD FRAME: PCI lenght (2 byte)
+  TstrPresent.data[1] = 0x3E;             // UDS FRAME: SID: Tester present (0x3E)
+  TstrPresent.data[2] = 0x80;             // UDS FRAME: SUPPRESS POSITIVE RESPONSE 
+  TstrPresent.data[3] = 0x00;             // UDS FRAME: not used -> 0 (padding...)
+  TstrPresent.data[4] = 0x00;             // 4.
+  TstrPresent.data[5] = 0x00;             // 5. 
+  TstrPresent.data[6] = 0x00;             // 6.
+  TstrPresent.data[7] = 0xA7;             // 7. checksum = (7DF+8+2+3E+80)&FF = A7
+
+  mcp2515.sendMessage(&TstrPresent);
 }
 
 void UDS_requestData()
@@ -135,15 +139,18 @@ void UDS_requestData()
   Serial.println("Requesting UDS data...");
 
   /*Send frame*/
-  rqstSpeed.can_id = 0x7DF;                 // Start Frame
-  rqstSpeed.can_dlc = 0x03;                 // 0. 3 bytes will be sent
-  rqstSpeed.data[0] = 0x22;                 // 1. SID -> Read data by ID
-  rqstSpeed.data[1] = 0xF4;                 // 2. DID -> Vehicle speed 1st byte
-  rqstSpeed.data[2] = 0x0D;                 // 3. DID -> Vehicle speed 2nd byte
-  rqstSpeed.data[3] = 0xCC;                 // 4. padding...
-  rqstSpeed.data[4] = 0xCC;                 // 5.
-  rqstSpeed.data[5] = 0xCC;                 // 6.
-  rqstSpeed.data[6] = 0xCC;                 // 7.
+  rqstSpeed.can_id = 0x7DF;                 // DEFAULT CAN FRAME, CAN ID
+  rqstSpeed.can_dlc = 0x08;                 // DEFAULT CAN FRAME, 8 bytes will be sent
+  rqstSpeed.data[0] = 0x03;                 // UDS FRAME: 3 bytes will be sent
+  rqstSpeed.data[1] = 0x22;                 // UDS FRAME: SID -> Read data by ID
+  rqstSpeed.data[2] = 0xF4;                 // UDS FRAME: DID -> Vehicle speed 1st byte
+  rqstSpeed.data[3] = 0x0D;                 // UDS FRAME: DID -> Vehicle speed 2nd byte
+  rqstSpeed.data[4] = 0x00;                 // UDS FRAME: not used -> 0 (padding...)
+  rqstSpeed.data[5] = 0x00;                 // 5.
+  rqstSpeed.data[6] = 0x00;                 // 6.
+  rqstSpeed.data[7] = 0x0D;                 // 7. checksum = (7DF+8+3+22+F4+0D)&FF = D
+
+  mcp2515.sendMessage(&rqstSpeed);
 
   digitalWrite(LED, !digitalRead(LED));
 }
@@ -197,21 +204,39 @@ void setup()
 
     mcp2515.reset();
     mcp2515.setBitrate(CAN_500KBPS, MCP_8MHZ);
-    //mcp2515.setLoopbackMode();
-    mcp2515.setNormalMode();
+    mcp2515.setLoopbackMode();
+    //mcp2515.setNormalMode();
 
     Serial.println("Pheripherial init finished...");
     delay(200);
 
+    //OBD2_request();
+    //WaitForResp();
+
+  /*
     UDS_ReqDiagSession();
     WaitForResp();
 
     UDS_requestData();
     WaitForResp();
+  */
 }
 
 void loop() 
 {
+  
+  delay(1500);
+  Serial.println();
+  /*
+    OBD2_request();
+    WaitForResp();
+*/
+   UDS_ReqDiagSession();
+   WaitForResp();
+
+   UDS_requestData();
+   WaitForResp();
+
   //CAN_Listen();
 
   // put your main code here, to run repeatedly:
